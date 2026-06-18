@@ -17,13 +17,30 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Downloads the exact side-by-side NDK necessary for compilation
       - name: Install Android NDK via SDKManager
         shell: cmd
         run: |
           echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "ndk;26.1.10909125" "build-tools;36.1.0" "platforms;android-36"
 
-      # Compiles the native dependencies and packages the APK 
+      # Patching the codebase to force compile as C++ to support SurfaceControl API
+      - name: Patch Native Code for C++ Compilation
+        shell: pwsh
+        run: |
+          $nativeDir = "android-app/native"
+          $scriptPath = "android-app/tools/build-apk.ps1"
+          
+          # 1. Rename the C file to a C++ extension if it exists
+          if (Test-Path "$nativeDir/waylandie_display_native.c") {
+              Rename-Item -Path "$nativeDir/waylandie_display_native.c" -NewName "waylandie_display_native.cpp"
+              Write-Host "Renamed native file to .cpp"
+          }
+          
+          # 2. Update the build script to target the new .cpp extension instead of .c
+          if (Test-Path $scriptPath) {
+              (Get-Content $scriptPath) -replace 'waylandie_display_native\.c', 'waylandie_display_native.cpp' | Set-Content $scriptPath
+              Write-Host "Patched build script references."
+          }
+
       - name: Build APK using PowerShell script
         shell: pwsh
         run: |
@@ -37,7 +54,6 @@ jobs:
           Copy-Item -Path "android-app/out/waylandie-display-mvp.apk" -Destination "linux-runtime/"
           Compress-Archive -Path "linux-runtime/*" -DestinationPath "waylandie-full-bundle.zip"
 
-      # Uploads everything as one easy-to-download artifact
       - name: Upload Complete Bundle
         uses: actions/upload-artifact@v4
         with:
