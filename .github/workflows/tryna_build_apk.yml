@@ -42,5 +42,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WayLandIE-Full-Distribution
-          path: waylandie-full-bu
-          ndle.zip
+          path: waylandie-full-bundle.zip
