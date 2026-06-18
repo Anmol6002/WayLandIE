@@ -17,49 +17,63 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Sets up standard Android NDK dependencies
+      # Standard Android NDK environment tool setup
       - name: Install Android NDK via SDKManager
         shell: cmd
         run: |
           echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "ndk;26.1.10909125" "build-tools;36.1.0" "platforms;android-36"
 
-      # Downloads the missing system header and cleans it for standard NDK compilation
+      # Direct inline file injection to bypass PowerShell download parser errors
       - name: Inject and Patch Missing Android Framework Headers
         shell: pwsh
         run: |
           $nativeDir = "android-app/native"
           $targetHeader = "$nativeDir/android/surface_control_jni.h"
           
-          # 1. Force file layout change to C++ 
+          # 1. Force file layout conversion to C++
           if (Test-Path "$nativeDir/waylandie_display_native.c") {
               Rename-Item -Path "$nativeDir/waylandie_display_native.c" -NewName "waylandie_display_native.cpp"
+              Write-Host "Converted workspace native file to .cpp"
           }
           
-          # 2. Re-route the include path locally inside the workspace
+          # 2. Redirect global framework search into local folder brackets
           $sourceFile = "$nativeDir/waylandie_display_native.cpp"
           if (Test-Path $sourceFile) {
               (Get-Content $sourceFile) -replace '<android/surface_control_jni.h>', '"android/surface_control_jni.h"' | Set-Content $sourceFile
           }
 
-          # 3. Download the actual surface_control_jni.h from Google Source
+          # 3. Create the missing path directory
           New-Item -ItemType Directory -Force -Path "$nativeDir/android"
-          $url = "https://googlesource.com"
-          $base64 = Invoke-RestMethod -Uri $url
-          $decoded = [System.Text.Encoding]::UTF-8.GetString([System.Convert]::FromBase64String($base64))
           
-          # 4. Comment out private symbols that break stand-alone NDK builds
-          $cleanedHeader = $decoded -replace '(?s)ASurfaceControl\* ASurfaceControl_createFromWindow.*?\);', '/* Method Removed by Patch */'
-          $cleanedHeader | Set-Content $targetHeader
-          Write-Host "Successfully injected and prepared missing framework header."
+          # 4. Write the clean NDK-compliant header structure explicitly
+          $headerContent = @"
+          #ifndef ANDROID_SURFACE_CONTROL_JNI_H
+          #define ANDROID_SURFACE_CONTROL_JNI_H
 
-      # Executes the compilation tracking the injected local directories
+          #include <sys/cdefs.h>
+          #include <jni.h>
+          #include <android/surface_control.h>
+
+          __BEGIN_DECLS
+
+          /* Private platform bindings removed for NDK stability */
+
+          __END_DECLS
+
+          #endif // ANDROID_SURFACE_CONTROL_JNI_H
+          "@
+
+          $headerContent | Set-Content $targetHeader
+          Write-Host "Successfully generated clean framework header mapping."
+
+      # Executes the project compilation tracker over the newly injected files
       - name: Build APK via Patched Compilation
         shell: pwsh
         run: |
           $NDK = "$env:ANDROID_HOME\ndk\26.1.10909125"
           $CLANG = "$NDK\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android31-clang++.cmd"
           
-          Write-Host "Compiling native components..."
+          Write-Host "Compiling native project architectures..."
           & $CLANG -shared -O3 `
             -I"android-app/native" `
             -I"$NDK\sysroot\usr\include" `
@@ -70,7 +84,7 @@ jobs:
             
           if ($LASTEXITCODE -ne 0) { throw "NDK compilation step failed" }
           
-          # Re-route your automation builder over the pre-compiled outputs
+          # Match internal naming configurations before routing packaging
           $scriptPath = "android-app/tools/build-apk.ps1"
           if (Test-Path $scriptPath) {
               (Get-Content $scriptPath) -replace 'waylandie_display_native\.c', 'waylandie_display_native.cpp' | Set-Content $scriptPath
@@ -79,7 +93,7 @@ jobs:
           $env:ANDROID_NDK_HOME = $NDK
           .\android-app\tools\build-apk.ps1 -SdkRoot $env:ANDROID_HOME -NdkRoot $NDK
 
-      # Packages the distribution bundle for Termux / Mobile browsers
+      # Consolidates and structures deployment zip archives for mobile use
       - name: Prepare Runtime Package
         shell: pwsh
         run: |
@@ -91,3 +105,4 @@ jobs:
         with:
           name: WayLandIE-Full-Distribution
           path: waylandie-full-bundle.zip
+          
