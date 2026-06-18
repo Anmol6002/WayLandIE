@@ -26,14 +26,27 @@ jobs:
         run: |
           echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "build-tools;36.1.0" "platforms;android-36"
 
-      - name: Build APK using Setup Script
+      - name: Build APK using PowerShell script
         shell: pwsh
+        env:
+          # Force the native build scripts to see the runner's SDK and NDK paths
+          ANDROID_HOME: C:\Android\android-sdk
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }} 
         run: |
-          # Executing the full host setup wrapper in native mode as specified in the README
-          .\scripts\setup-phone.ps1 -RequireNative -NdkRoot $env:ANDROID_NDK_ROOT
+          cd android-app
+          # Directly use the compilation script, cleanly declaring your SDK root
+          .\tools\build-apk.ps1 -SdkRoot "C:\Android\android-sdk"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: WayLandIE-APK
           path: android-app/out/waylandie-display-mvp.apk
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android Build Tools and Platform
+        shell: cmd
+        run: |
+          echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "build-tools;36.1.0" "platforms;android-36"
+
