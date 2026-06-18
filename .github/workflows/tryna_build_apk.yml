@@ -1,4 +1,4 @@
-name: Build WayLandie Android APK and Runtime
+name: Build WayLandie Android APK
 
 on:
   workflow_dispatch:
@@ -17,92 +17,23 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Standard Android NDK environment tool setup
-      - name: Install Android NDK via SDKManager
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+        # This automatically installs the NDK and sets the ANDROID_NDK_ROOT env variable
+
+      - name: Install Android Build Tools and Platform
         shell: cmd
         run: |
-          echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "ndk;26.1.10909125" "build-tools;36.1.0" "platforms;android-36"
+          echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "build-tools;36.1.0" "platforms;android-36"
 
-      # Direct inline file injection to bypass PowerShell download parser errors
-      - name: Inject and Patch Missing Android Framework Headers
+      - name: Build APK using Setup Script
         shell: pwsh
         run: |
-          $nativeDir = "android-app/native"
-          $targetHeader = "$nativeDir/android/surface_control_jni.h"
-          
-          # 1. Force file layout conversion to C++
-          if (Test-Path "$nativeDir/waylandie_display_native.c") {
-              Rename-Item -Path "$nativeDir/waylandie_display_native.c" -NewName "waylandie_display_native.cpp"
-              Write-Host "Converted workspace native file to .cpp"
-          }
-          
-          # 2. Redirect global framework search into local folder brackets
-          $sourceFile = "$nativeDir/waylandie_display_native.cpp"
-          if (Test-Path $sourceFile) {
-              (Get-Content $sourceFile) -replace '<android/surface_control_jni.h>', '"android/surface_control_jni.h"' | Set-Content $sourceFile
-          }
+          # Executing the full host setup wrapper in native mode as specified in the README
+          .\scripts\setup-phone.ps1 -RequireNative -NdkRoot $env:ANDROID_NDK_ROOT
 
-          # 3. Create the missing path directory
-          New-Item -ItemType Directory -Force -Path "$nativeDir/android"
-          
-          # 4. Write the clean NDK-compliant header structure explicitly
-          $headerContent = @"
-          #ifndef ANDROID_SURFACE_CONTROL_JNI_H
-          #define ANDROID_SURFACE_CONTROL_JNI_H
-
-          #include <sys/cdefs.h>
-          #include <jni.h>
-          #include <android/surface_control.h>
-
-          __BEGIN_DECLS
-
-          /* Private platform bindings removed for NDK stability */
-
-          __END_DECLS
-
-          #endif // ANDROID_SURFACE_CONTROL_JNI_H
-          "@
-
-          $headerContent | Set-Content $targetHeader
-          Write-Host "Successfully generated clean framework header mapping."
-
-      # Executes the project compilation tracker over the newly injected files
-      - name: Build APK via Patched Compilation
-        shell: pwsh
-        run: |
-          $NDK = "$env:ANDROID_HOME\ndk\26.1.10909125"
-          $CLANG = "$NDK\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android31-clang++.cmd"
-          
-          Write-Host "Compiling native project architectures..."
-          & $CLANG -shared -O3 `
-            -I"android-app/native" `
-            -I"$NDK\sysroot\usr\include" `
-            -I"$NDK\sysroot\usr\include\android" `
-            "android-app/native/waylandie_display_native.cpp" `
-            -o "android-app/native/libwaylandie_display.so" `
-            -landroid -llog -lvulkan
-            
-          if ($LASTEXITCODE -ne 0) { throw "NDK compilation step failed" }
-          
-          # Match internal naming configurations before routing packaging
-          $scriptPath = "android-app/tools/build-apk.ps1"
-          if (Test-Path $scriptPath) {
-              (Get-Content $scriptPath) -replace 'waylandie_display_native\.c', 'waylandie_display_native.cpp' | Set-Content $scriptPath
-          }
-          
-          $env:ANDROID_NDK_HOME = $NDK
-          .\android-app\tools\build-apk.ps1 -SdkRoot $env:ANDROID_HOME -NdkRoot $NDK
-
-      # Consolidates and structures deployment zip archives for mobile use
-      - name: Prepare Runtime Package
-        shell: pwsh
-        run: |
-          Copy-Item -Path "android-app/out/waylandie-display-mvp.apk" -Destination "linux-runtime/" -ErrorAction Ignore
-          Compress-Archive -Path "linux-runtime/*" -DestinationPath "waylandie-full-bundle.zip"
-
-      - name: Upload Complete Bundle
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WayLandIE-Full-Distribution
-          path: waylandie-full-bundle.zip
-          
+          name: WayLandIE-APK
+          path: android-app/out/waylandie-display-mvp.apk
