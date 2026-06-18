@@ -8,7 +8,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
+      
+      # Installs the missing build-tools version required by your script
+      - name: Setup Android SDK & Build-Tools
+        uses: android-actions/setup-android@v3
+        with:
+          build-tools: "36.1.0"
+      
       - name: Set up Android NDK
         run: |
           # The script looks for NDK r29 or similar; Windows runners have the SDK pre-installed.
