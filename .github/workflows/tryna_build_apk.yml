@@ -16,13 +16,13 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Android NDK
+          
+      - name: Setup Android SDK and NDK r29
         uses: android-actions/setup-android@v3
         with:
-          # Pins the LTS bug-free NDK containing the clean header signatures
-          ndk-version: '28.0.12433566'
-
+          # Tells Google's sdkmanager to fetch the exact NDK r29 engine
+          packages: 'ndk;29.0.14206865'
+    
       - name: Install Android Build Tools and Platform
         shell: cmd
         run: |
