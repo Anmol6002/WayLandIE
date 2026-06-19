@@ -16,25 +16,27 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          
+
       - name: Setup Android NDK
         uses: android-actions/setup-android@v3
+        with:
+          # Pins the LTS bug-free NDK containing the clean header signatures
+          ndk-version: '28.0.12433566'
 
       - name: Install Android Build Tools and Platform
         shell: cmd
         run: |
           echo y| "%ANDROID_HOME%\cmdline-tools\latest\bin\sdkmanager.bat" "build-tools;36.1.0" "platforms;android-36"
-
+      
       - name: Build APK using PowerShell script
         shell: pwsh
         run: |
           cd android-app
-          # Force the native path using the exact NDK provided by the runner environment
-          .\tools\build-apk.ps1 -SdkRoot "C:\Android\android-sdk" -NdkRoot $env:ANDROID_NDK_ROOT -RequireNative
- 
+          # Directly matches the README pattern using the runner's real tool paths
+          .\tools\build-apk.ps1 -RequireNative -NdkRoot $env:ANDROID_NDK_ROOT -SdkRoot "C:\Android\android-sdk"
+          
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: WayLandIE-APK
           path: android-app/out/waylandie-display-mvp.apk
-
